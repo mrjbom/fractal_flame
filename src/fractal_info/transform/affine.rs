@@ -1,6 +1,7 @@
 use nalgebra as na;
 use nalgebra::Vector2;
 
+#[derive(Clone)]
 pub struct AffineCoefs {
     pub a: f64,
     pub b: f64,

@@ -1,10 +1,14 @@
-use crate::fractal_info::affine::AffineCoefs;
-use crate::fractal_info::variation::VariationAndWeight;
+use transform::Transform;
 
-mod affine;
-mod variation;
+pub mod transform;
 
-struct FractalInfo {
-    affine_coefs: AffineCoefs,
-    variations_and_weights: Vec<VariationAndWeight>,
+#[derive(Clone)]
+pub struct TransformAndProbability {
+    pub transform: Transform,
+    pub probability: f32,
+}
+
+#[derive(Clone)]
+pub struct FractalInfo {
+    pub transforms_and_probabilities: Vec<TransformAndProbability>,
 }

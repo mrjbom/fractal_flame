@@ -1,6 +1,7 @@
 use nalgebra as na;
 use nalgebra::Vector2;
 
+#[derive(Clone)]
 pub struct VariationAndWeight {
     pub variation: Variation,
     pub weight: f64,
