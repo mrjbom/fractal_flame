@@ -14,6 +14,7 @@ impl HistogramCell {
 
 #[derive(Clone)]
 pub struct Histogram {
+    // Use get and get_mut, or [(y, x)]
     cells: Array2<HistogramCell>,
 }
 
@@ -30,5 +31,15 @@ impl Histogram {
 
     pub fn height(&self) -> usize {
         self.cells.nrows()
+    }
+
+    #[inline(always)]
+    pub fn get(&self, x: usize, y: usize) -> &HistogramCell {
+        &self.cells[(y, x)]
+    }
+
+    #[inline(always)]
+    pub fn get_mut(&mut self, x: usize, y: usize) -> &mut HistogramCell {
+        &mut self.cells[(y, x)]
     }
 }

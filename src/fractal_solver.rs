@@ -101,9 +101,6 @@ impl LocalFractalSolver {
                 })
                 .expect("Failed to get random transform")
                 .transform;
-            if self.iterations_count == 0 {
-                self.color = transform.color;
-            }
 
             // Perform affine transform
             self.p = calculate_affine_transform(self.p, &transform.affine_coefs);
@@ -140,7 +137,16 @@ impl LocalFractalSolver {
             );
 
             // Put point in histogram
+            let histogram_cell = self
+                .histogram
+                .get_mut(histogram_coords.x, histogram_coords.y);
+            histogram_cell.count += 1;
 
+            if self.iterations_count == 0 {
+                self.color = transform.color;
+            }
+            self.color = self.color * (1.0 - transform.color_speed)
+                + transform.color * transform.color_speed;
             self.iterations_count += 1;
         }
     }

@@ -10,4 +10,5 @@ pub struct Transform {
     pub variations_and_weights: Vec<VariationAndWeight>,
     // offset in palette
     pub color: f64,
+    pub color_speed: f64,
 }
