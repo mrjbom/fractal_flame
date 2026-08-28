@@ -1,5 +1,5 @@
-mod affine;
-mod variation;
+pub mod affine;
+pub mod variation;
 
 use affine::AffineCoefs;
 use variation::VariationAndWeight;

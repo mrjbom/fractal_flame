@@ -22,7 +22,7 @@ pub fn calculate_variations_blend(
     p: Vector2<f64>,
     variations_and_weights: &[VariationAndWeight],
 ) -> Vector2<f64> {
-    let mut new_p: Vector2<f64> = p;
+    let mut new_p: Vector2<f64> = Vector2::zeros();
     for variation_and_weight in variations_and_weights {
         new_p += variation_and_weight.weight
             * calculate_variation_transform(p, variation_and_weight.variation);
