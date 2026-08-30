@@ -7,14 +7,33 @@ pub struct VariationAndWeight {
     pub weight: f64,
 }
 
+impl VariationAndWeight {
+    pub fn new(variation: Variation, weight: f64) -> Self {
+        Self { variation, weight }
+    }
+}
+
+impl From<(Variation, f64)> for VariationAndWeight {
+    fn from(value: (Variation, f64)) -> Self {
+        Self {
+            variation: value.0,
+            weight: value.1,
+        }
+    }
+}
+
 #[derive(Copy, Clone)]
 pub enum Variation {
     Linear,
+    Julia,
+    Popcorn,
+    Pdj { a: f64, b: f64, c: f64, d: f64 },
 }
 
 pub fn calculate_variation_transform(p: Vector2<f64>, variation: Variation) -> Vector2<f64> {
     match variation {
         Variation::Linear => p,
+        _ => unimplemented!("Unknown variation"),
     }
 }
 

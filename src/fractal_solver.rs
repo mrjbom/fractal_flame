@@ -91,7 +91,8 @@ impl LocalFractalSolver {
     }
 
     pub fn solve(&mut self, iterations_number: u64) {
-        while self.iterations_count < iterations_number {
+        let mut solved_iterations_count = 0;
+        while solved_iterations_count < iterations_number {
             // Select random transform
             let transform = &self
                 .fractal_info
@@ -147,7 +148,9 @@ impl LocalFractalSolver {
             }
             self.color = self.color * (1.0 - transform.color_speed)
                 + transform.color * transform.color_speed;
+
             self.iterations_count += 1;
+            solved_iterations_count += 1;
         }
     }
 }
