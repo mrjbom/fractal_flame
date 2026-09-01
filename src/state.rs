@@ -29,9 +29,10 @@ impl State {
 
         // Init compute state
         let compute_state_init_info = ComputeStateInitInfo {
-            sequences_number: std::thread::available_parallelism()
+            threads_number: std::thread::available_parallelism()
                 .expect("Failed to get available parallelism data")
                 .get(),
+            sequences_number: 1,
             fractal_info: Arc::clone(&fractal_info),
             histogram_width: DEFAULT_IMAGE_SIZE.0,
             histogram_height: DEFAULT_IMAGE_SIZE.1,

@@ -6,30 +6,43 @@ use nalgebra::Vector2;
 use rand::prelude::*;
 use rand::rngs::ChaCha12Rng;
 use rayon::prelude::*;
-use std::sync::Arc;
+use rayon::{ThreadPool, ThreadPoolBuilder};
+use std::ops::AddAssign;
+use std::sync::{Arc, mpsc};
 
 pub struct ComputeState {
     fractal_solver_init_info: ComputeStateInitInfo,
+    thread_pool: ThreadPool,
     main_histogram: Histogram,
-    local_compute_states: Vec<LocalComputeState>,
+    sequences_compute_states: Vec<SequenceComputeState>,
+    sequences_compute_state_channel: (
+        mpsc::Sender<SequenceComputeState>,
+        mpsc::Receiver<SequenceComputeState>,
+    ),
+    sequences_compute_in_progress: bool,
 }
 
 impl ComputeState {
     pub fn new(fractal_solver_init_info: ComputeStateInitInfo) -> Self {
+        let thread_pool = ThreadPoolBuilder::new()
+            .num_threads(fractal_solver_init_info.threads_number)
+            .build()
+            .expect("Failed to build thread pool");
+
         let main_histogram = Histogram::new(
             fractal_solver_init_info.histogram_width,
             fractal_solver_init_info.histogram_height,
             fractal_solver_init_info.histogram_initial_color,
         );
 
-        let mut local_compute_states =
-            Vec::with_capacity(fractal_solver_init_info.sequences_number);
+        let mut sequences_compute_states =
+            Vec::with_capacity(fractal_solver_init_info.threads_number);
         let mut local_solvers_seeds_gen =
             ChaCha12Rng::seed_from_u64(fractal_solver_init_info.rng_seed);
-        for _ in 0..local_compute_states.len() {
+        for _ in 0..sequences_compute_states.len() {
             let rng = ChaCha12Rng::from_seed(local_solvers_seeds_gen.random());
             let psi_rng = ChaCha12Rng::from_seed(local_solvers_seeds_gen.random());
-            local_compute_states.push(LocalComputeState::new(
+            sequences_compute_states.push(SequenceComputeState::new(
                 fractal_solver_init_info.fractal_info.clone(),
                 fractal_solver_init_info.histogram_width,
                 fractal_solver_init_info.histogram_height,
@@ -39,20 +52,66 @@ impl ComputeState {
                 psi_rng,
             ));
         }
+        let sequences_compute_state_channel = mpsc::channel();
 
         Self {
             fractal_solver_init_info,
+            thread_pool,
             main_histogram,
-            local_compute_states,
+            sequences_compute_states,
+            sequences_compute_state_channel,
+            sequences_compute_in_progress: false,
         }
     }
 
-    pub fn run_local_computes(&mut self, iterations_number: u64) {
-        unimplemented!()
+    pub fn run_iterations_in_current_sequences(&mut self, iterations_number: u64) {
+        debug_assert!(!self.sequences_compute_in_progress);
+        // Do iterations_number iterations in compute states using thread_pool
+        for i in 0..self.sequences_compute_states.len() {
+            let mut sequence_compute_state = self.sequences_compute_states.remove(i);
+            let sender = self.sequences_compute_state_channel.0.clone();
+            self.thread_pool.spawn(move || {
+                sequence_compute_state.compute(iterations_number);
+                sender.send(sequence_compute_state).unwrap();
+            });
+        }
+        self.sequences_compute_in_progress = true;
+    }
+
+    pub fn try_receive_sequences(&mut self) -> bool {
+        if !self.sequences_compute_in_progress {
+            return true;
+        }
+
+        for sequence_compute_state in self.sequences_compute_state_channel.1.try_iter() {
+            self.sequences_compute_states.push(sequence_compute_state);
+        }
+
+        if self.sequences_compute_states.len() == self.fractal_solver_init_info.sequences_number {
+            self.sequences_compute_in_progress = false;
+        }
+        !self.sequences_compute_in_progress
+    }
+
+    pub fn merge_local_sequences_histograms_to_main(&mut self) {
+        debug_assert!(!self.sequences_compute_in_progress);
+        self.main_histogram.clear();
+        for y in 0..self.main_histogram.height() {
+            for x in 0..self.main_histogram.width() {
+                let main_cell = self.main_histogram.get_mut(x, y);
+                let mut color_sum = 0.0;
+                for sequence_compute_state in &self.sequences_compute_states {
+                    let sequence_compute_cell = sequence_compute_state.histogram.get(x, y);
+                    main_cell.count += sequence_compute_cell.count;
+                    color_sum += sequence_compute_cell.color;
+                }
+                main_cell.color = color_sum / self.sequences_compute_states.len() as f64;
+            }
+        }
     }
 }
 
-struct LocalComputeState {
+struct SequenceComputeState {
     p: Vector2<f64>,
     color: f64,
     iterations_count: u64,
@@ -64,7 +123,7 @@ struct LocalComputeState {
     psi_rng: ChaCha12Rng,
 }
 
-impl LocalComputeState {
+impl SequenceComputeState {
     pub fn new(
         fractal_info: Arc<FractalInfo>,
         histogram_width: usize,
@@ -169,6 +228,7 @@ impl LocalComputeState {
 }
 
 pub struct ComputeStateInitInfo {
+    pub threads_number: usize,
     pub sequences_number: usize,
     pub fractal_info: Arc<FractalInfo>,
     pub histogram_width: usize,
