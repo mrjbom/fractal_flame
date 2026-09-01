@@ -24,10 +24,10 @@ impl From<(Variation, f64)> for VariationAndWeight {
 
 #[derive(Copy, Clone)]
 pub enum Variation {
-    Linear,
-    Julia,
-    Popcorn,
-    Pdj { a: f64, b: f64, c: f64, d: f64 },
+    Linear,                                 // 0
+    Julia,                                  // 13
+    Popcorn,                                // 17
+    Pdj { a: f64, b: f64, c: f64, d: f64 }, // 24
 }
 
 pub fn calculate_variation_transform(p: Vector2<f64>, variation: Variation) -> Vector2<f64> {

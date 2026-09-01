@@ -170,7 +170,6 @@ impl LocalComputeState {
 
 pub struct ComputeStateInitInfo {
     pub sequences_number: usize,
-    pub iterations_number: usize,
     pub fractal_info: Arc<FractalInfo>,
     pub histogram_width: usize,
     pub histogram_height: usize,
