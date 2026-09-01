@@ -1,5 +1,4 @@
 use crate::DEFAULT_IMAGE_SIZE;
-use crate::state::State;
 use eframe::egui::{Color32, ColorImage, Image, TextureHandle, TextureOptions, Ui};
 use eframe::{Frame, egui};
 
@@ -23,7 +22,7 @@ impl UiState {
 
     pub fn draw_ui(&mut self, ui: &mut Ui, _frame: &mut Frame) {
         if ui.ctx().cumulative_frame_nr() == 0 {
-            ui.ctx().request_discard("Start");
+            ui.ctx().request_discard("Startup");
         }
         self.draw_top_panel(ui);
         self.draw_bottom_panel(ui);

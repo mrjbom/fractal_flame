@@ -4,7 +4,7 @@ pub mod variation;
 use affine::AffineCoefs;
 use variation::VariationAndWeight;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Transform {
     pub affine_coefs: AffineCoefs,
     pub variations_and_weights: Vec<VariationAndWeight>,

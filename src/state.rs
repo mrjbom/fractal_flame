@@ -1,8 +1,9 @@
 mod compute;
-mod render;
+mod ui_state;
 
 use crate::fractal_info::{DEFAULT_FRACTAL_INFO, FractalInfo};
 use crate::state::compute::compute_state::ComputeStateInitInfo;
+use crate::state::ui_state::UiState;
 use crate::{DEFAULT_IMAGE_SIZE, fractal_info};
 use compute::Compute;
 use eframe::Frame;
@@ -10,14 +11,13 @@ use eframe::egui::Ui;
 use eframe::egui_wgpu::RenderState;
 use rand::rngs::ChaCha12Rng;
 use rand::{RngExt, SeedableRng};
-use render::Render;
 use std::sync::Arc;
 
 pub struct State {
     main_rng: ChaCha12Rng,
     fractal_info: Arc<FractalInfo>,
     compute: Compute,
-    render: Render,
+    ui_state: UiState,
 }
 
 impl State {
@@ -40,19 +40,17 @@ impl State {
             rng_seed: main_rng.random(),
         };
         let compute = Compute::new(compute_state_init_info);
-
-        // Init render and ui state
-        let render = Render::new(creation_context);
+        let ui_state = UiState::new(creation_context);
 
         Self {
             main_rng,
             fractal_info,
             compute,
-            render,
+            ui_state,
         }
     }
 
     pub fn draw_ui(&mut self, ui: &mut Ui, frame: &mut Frame) {
-        self.render.ui_state.draw_ui(ui, frame);
+        self.ui_state.draw_ui(ui, frame);
     }
 }

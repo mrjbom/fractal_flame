@@ -1,7 +1,7 @@
 use nalgebra as na;
 use nalgebra::Vector2;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct VariationAndWeight {
     pub variation: Variation,
     pub weight: f64,
@@ -22,7 +22,7 @@ impl From<(Variation, f64)> for VariationAndWeight {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum Variation {
     Linear,                                 // 0
     Julia,                                  // 13

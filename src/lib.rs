@@ -1,14 +1,8 @@
 #![allow(unused)]
 
 use crate::state::State;
-use eframe::egui::load::SizedTexture;
-use eframe::egui::{
-    Align, Color32, ColorImage, Context, Image, ImageSource, Layout, TextureHandle, TextureOptions,
-    Ui, ViewportBuilder,
-};
-use eframe::{Frame, egui};
-use image::RgbaImage;
-use std::fs;
+use eframe::Frame;
+use eframe::egui::{Context, Ui, ViewportBuilder};
 
 const DEFAULT_WINDOW_SIZE: (usize, usize) = (1280, 720);
 const DEFAULT_IMAGE_SIZE: (usize, usize) = (720, 720);
