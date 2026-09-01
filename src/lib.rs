@@ -13,8 +13,8 @@ const DEFAULT_WINDOW_SIZE: (usize, usize) = (1280, 720);
 const DEFAULT_IMAGE_SIZE: (usize, usize) = (720, 720);
 
 mod fractal_info;
-mod fractal_solver;
 mod histogram;
+mod state;
 
 pub fn run() -> eframe::Result {
     let native_options = eframe::NativeOptions {

@@ -6,23 +6,30 @@ use nalgebra::Vector2;
 use rand::prelude::*;
 use rand::rngs::ChaCha12Rng;
 use rayon::prelude::*;
+use std::sync::Arc;
 
-// Monte Carlo parallel solver
-pub struct FractalSolver {
-    fractal_solver_init_info: FractalSolverInitInfo,
-    local_fractal_solvers: Vec<LocalFractalSolver>,
+pub struct ComputeState {
+    fractal_solver_init_info: ComputeStateInitInfo,
+    main_histogram: Histogram,
+    local_compute_states: Vec<LocalComputeState>,
 }
 
-impl FractalSolver {
-    pub fn new(fractal_solver_init_info: FractalSolverInitInfo) -> Self {
-        let mut local_fractal_solvers =
+impl ComputeState {
+    pub fn new(fractal_solver_init_info: ComputeStateInitInfo) -> Self {
+        let main_histogram = Histogram::new(
+            fractal_solver_init_info.histogram_width,
+            fractal_solver_init_info.histogram_height,
+            fractal_solver_init_info.histogram_initial_color,
+        );
+
+        let mut local_compute_states =
             Vec::with_capacity(fractal_solver_init_info.sequences_number);
         let mut local_solvers_seeds_gen =
             ChaCha12Rng::seed_from_u64(fractal_solver_init_info.rng_seed);
-        for _ in 0..local_fractal_solvers.len() {
+        for _ in 0..local_compute_states.len() {
             let rng = ChaCha12Rng::from_seed(local_solvers_seeds_gen.random());
             let psi_rng = ChaCha12Rng::from_seed(local_solvers_seeds_gen.random());
-            local_fractal_solvers.push(LocalFractalSolver::new(
+            local_compute_states.push(LocalComputeState::new(
                 fractal_solver_init_info.fractal_info.clone(),
                 fractal_solver_init_info.histogram_width,
                 fractal_solver_init_info.histogram_height,
@@ -32,28 +39,34 @@ impl FractalSolver {
                 psi_rng,
             ));
         }
+
         Self {
             fractal_solver_init_info,
-            local_fractal_solvers,
+            main_histogram,
+            local_compute_states,
         }
+    }
+
+    pub fn run_local_computes(&mut self, iterations_number: u64) {
+        unimplemented!()
     }
 }
 
-struct LocalFractalSolver {
+struct LocalComputeState {
     p: Vector2<f64>,
     color: f64,
     iterations_count: u64,
     burn_iterations_count: u64,
     histogram: Histogram,
-    fractal_info: FractalInfo,
+    fractal_info: Arc<FractalInfo>,
     compute_area: euclid::Box2D<f64, ()>,
     rng: ChaCha12Rng,
     psi_rng: ChaCha12Rng,
 }
 
-impl LocalFractalSolver {
+impl LocalComputeState {
     pub fn new(
-        fractal_info: FractalInfo,
+        fractal_info: Arc<FractalInfo>,
         histogram_width: usize,
         histogram_height: usize,
         histogram_initial_color: f64,
@@ -77,7 +90,7 @@ impl LocalFractalSolver {
             ),
         );
 
-        LocalFractalSolver {
+        Self {
             p,
             color: 0.0,
             iterations_count: 0,
@@ -90,7 +103,7 @@ impl LocalFractalSolver {
         }
     }
 
-    pub fn solve(&mut self, iterations_number: u64) {
+    pub fn compute(&mut self, iterations_number: u64) {
         let mut solved_iterations_count = 0;
         while solved_iterations_count < iterations_number {
             // Select random transform
@@ -155,10 +168,10 @@ impl LocalFractalSolver {
     }
 }
 
-pub struct FractalSolverInitInfo {
+pub struct ComputeStateInitInfo {
     pub sequences_number: usize,
     pub iterations_number: usize,
-    pub fractal_info: FractalInfo,
+    pub fractal_info: Arc<FractalInfo>,
     pub histogram_width: usize,
     pub histogram_height: usize,
     pub histogram_initial_color: f64,
@@ -185,7 +198,7 @@ pub fn compute_coords_to_histogram_coords(
 
 #[cfg(test)]
 mod tests {
-    use crate::fractal_solver::compute_coords_to_histogram_coords;
+    use super::compute_coords_to_histogram_coords;
     use nalgebra::Vector2;
 
     #[test]
