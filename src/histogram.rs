@@ -14,21 +14,15 @@ impl HistogramCell {
 
 #[derive(Clone)]
 pub struct Histogram {
-    pub initial_color: f64,
     // Use get and get_mut, or [(y, x)]
     pub cells: Array2<HistogramCell>,
 }
 
 impl Histogram {
-    pub fn new(width: usize, height: usize, initial_color: f64) -> Self {
+    pub fn new(width: usize, height: usize) -> Self {
         // MxN, M rows, N columns
-        let cells = Array2::from_shape_fn((height, width), |(_i, _j)| {
-            HistogramCell::new(initial_color)
-        });
-        Self {
-            initial_color,
-            cells,
-        }
+        let cells = Array2::from_shape_fn((height, width), |(_i, _j)| HistogramCell::new(0.0));
+        Self { cells }
     }
 
     pub fn width(&self) -> usize {
@@ -50,6 +44,6 @@ impl Histogram {
     }
 
     pub fn clear(&mut self) {
-        self.cells.fill(HistogramCell::new(self.initial_color));
+        self.cells.fill(HistogramCell::new(0.0));
     }
 }

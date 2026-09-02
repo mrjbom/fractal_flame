@@ -1,3 +1,4 @@
+use crate::compute::compute_params::ComputeParams;
 use crate::fractal_info::FractalInfo;
 use crate::fractal_info::transform::affine::calculate_affine_transform;
 use crate::fractal_info::transform::variation::calculate_variations_blend;
@@ -11,7 +12,6 @@ use std::ops::AddAssign;
 use std::sync::{Arc, mpsc};
 
 pub struct ComputeState {
-    fractal_solver_init_info: ComputeStateInitInfo,
     thread_pool: ThreadPool,
     main_histogram: Histogram,
     sequences_compute_states: Vec<SequenceComputeState>,
@@ -23,31 +23,27 @@ pub struct ComputeState {
 }
 
 impl ComputeState {
-    pub fn new(fractal_solver_init_info: ComputeStateInitInfo) -> Self {
+    pub fn new(compute_params: &ComputeParams) -> Self {
         let thread_pool = ThreadPoolBuilder::new()
-            .num_threads(fractal_solver_init_info.threads_number)
+            .num_threads(compute_params.threads_number)
             .build()
             .expect("Failed to build thread pool");
 
         let main_histogram = Histogram::new(
-            fractal_solver_init_info.histogram_width,
-            fractal_solver_init_info.histogram_height,
-            fractal_solver_init_info.histogram_initial_color,
+            compute_params.histogram_width,
+            compute_params.histogram_height,
         );
 
-        let mut sequences_compute_states =
-            Vec::with_capacity(fractal_solver_init_info.threads_number);
-        let mut local_solvers_seeds_gen =
-            ChaCha12Rng::seed_from_u64(fractal_solver_init_info.rng_seed);
+        let mut sequences_compute_states = Vec::with_capacity(compute_params.threads_number);
+        let mut local_solvers_seeds_gen = ChaCha12Rng::seed_from_u64(compute_params.rng_seed);
         for _ in 0..sequences_compute_states.len() {
             let rng = ChaCha12Rng::from_seed(local_solvers_seeds_gen.random());
             let psi_rng = ChaCha12Rng::from_seed(local_solvers_seeds_gen.random());
             sequences_compute_states.push(SequenceComputeState::new(
-                fractal_solver_init_info.fractal_info.clone(),
-                fractal_solver_init_info.histogram_width,
-                fractal_solver_init_info.histogram_height,
-                fractal_solver_init_info.histogram_initial_color,
-                fractal_solver_init_info.burn_iterations_count,
+                compute_params.fractal_info.clone(),
+                compute_params.histogram_width,
+                compute_params.histogram_height,
+                compute_params.burn_iterations_count,
                 rng,
                 psi_rng,
             ));
@@ -55,7 +51,6 @@ impl ComputeState {
         let sequences_compute_state_channel = mpsc::channel();
 
         Self {
-            fractal_solver_init_info,
             thread_pool,
             main_histogram,
             sequences_compute_states,
@@ -78,7 +73,7 @@ impl ComputeState {
         self.sequences_compute_in_progress = true;
     }
 
-    pub fn try_receive_sequences(&mut self) -> bool {
+    pub fn try_receive_sequences(&mut self, compute_params: &ComputeParams) -> bool {
         if !self.sequences_compute_in_progress {
             return true;
         }
@@ -87,7 +82,7 @@ impl ComputeState {
             self.sequences_compute_states.push(sequence_compute_state);
         }
 
-        if self.sequences_compute_states.len() == self.fractal_solver_init_info.sequences_number {
+        if self.sequences_compute_states.len() == compute_params.sequences_number {
             self.sequences_compute_in_progress = false;
         }
         !self.sequences_compute_in_progress
@@ -128,14 +123,13 @@ impl SequenceComputeState {
         fractal_info: Arc<FractalInfo>,
         histogram_width: usize,
         histogram_height: usize,
-        histogram_initial_color: f64,
         burn_iterations_count: u64,
         mut rng: ChaCha12Rng,
         psi_rng: ChaCha12Rng,
     ) -> Self {
         let p: Vector2<f64> =
             Vector2::new(rng.random_range(-1.0..=1.0), rng.random_range(-1.0..=1.0));
-        let histogram = Histogram::new(histogram_width, histogram_height, histogram_initial_color);
+        let histogram = Histogram::new(histogram_width, histogram_height);
         let compute_area_size: Vector2<f64> =
             fractal_info.specified_image_size.cast::<f64>() / fractal_info.specified_scale;
         let compute_area: euclid::Box2D<f64, ()> = euclid::Box2D::new(
@@ -225,17 +219,6 @@ impl SequenceComputeState {
             solved_iterations_count += 1;
         }
     }
-}
-
-pub struct ComputeStateInitInfo {
-    pub threads_number: usize,
-    pub sequences_number: usize,
-    pub fractal_info: Arc<FractalInfo>,
-    pub histogram_width: usize,
-    pub histogram_height: usize,
-    pub histogram_initial_color: f64,
-    pub burn_iterations_count: u64,
-    pub rng_seed: u64,
 }
 
 pub fn compute_coords_to_histogram_coords(

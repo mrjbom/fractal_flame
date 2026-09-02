@@ -1,15 +1,23 @@
 #![allow(unused)]
 
-use crate::state::State;
+use crate::compute::Compute;
+use crate::fractal_info::{DEFAULT_FRACTAL_INFO, FractalInfo};
+use crate::render::Render;
+use crate::ui_state::UiState;
 use eframe::Frame;
 use eframe::egui::{Context, Ui, ViewportBuilder};
+use rand::SeedableRng;
+use rand::rngs::ChaCha12Rng;
+use std::sync::Arc;
 
 const DEFAULT_WINDOW_SIZE: (usize, usize) = (1280, 720);
 const DEFAULT_IMAGE_SIZE: (usize, usize) = (720, 720);
 
+mod compute;
 mod fractal_info;
 mod histogram;
-mod state;
+mod render;
+mod ui_state;
 
 pub fn run() -> eframe::Result {
     let native_options = eframe::NativeOptions {
@@ -27,14 +35,37 @@ pub fn run() -> eframe::Result {
 }
 
 pub struct App {
-    state: State,
+    render: Render,
+    compute: Compute,
+    main_rng: ChaCha12Rng,
+    fractal_info: Arc<FractalInfo>,
+    ui_state: UiState,
 }
 
 impl App {
-    pub fn new(creation_context: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(creation_context: &eframe::CreationContext) -> Self {
         egui_extras::install_image_loaders(&creation_context.egui_ctx);
-        let state = State::new(creation_context);
-        Self { state }
+        let mut main_rng = ChaCha12Rng::from_seed(rand::random());
+        // Load fractal info
+        fractal_info::init_default_fractal_info();
+        let fractal_info = Arc::new(DEFAULT_FRACTAL_INFO.get().cloned().unwrap());
+
+        let render = Render::new();
+
+        let ui_state = UiState::new(creation_context);
+        let compute = Compute::new(Arc::clone(&fractal_info), &mut main_rng);
+
+        Self {
+            render,
+            compute,
+            main_rng,
+            fractal_info,
+            ui_state,
+        }
+    }
+
+    pub fn startup(&mut self) {
+        // Set default params
     }
 }
 
@@ -42,6 +73,6 @@ impl eframe::App for App {
     fn logic(&mut self, _ctx: &Context, _frame: &mut Frame) {}
 
     fn ui(&mut self, ui: &mut Ui, frame: &mut Frame) {
-        self.state.draw_ui(ui, frame);
+        self.ui_state.draw_ui(ui, frame);
     }
 }
