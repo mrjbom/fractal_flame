@@ -1,29 +1,32 @@
 #![allow(unused)]
 
 use crate::compute::Compute;
+use crate::compute::compute_params::ComputeParams;
 use crate::fractal_info::{DEFAULT_FRACTAL_INFO, FractalInfo};
-use crate::render::Render;
 use crate::ui_state::UiState;
+use crate::visualization::Visualization;
+use crate::visualization::visualization_params::VisualizationParams;
 use eframe::Frame;
 use eframe::egui::{Context, Ui, ViewportBuilder};
-use rand::SeedableRng;
+use nalgebra::Vector2;
 use rand::rngs::ChaCha12Rng;
+use rand::{RngExt, SeedableRng};
 use std::sync::Arc;
 
-const DEFAULT_WINDOW_SIZE: (usize, usize) = (1280, 720);
-const DEFAULT_IMAGE_SIZE: (usize, usize) = (720, 720);
+const DEFAULT_WINDOW_SIZE: Vector2<usize> = Vector2::new(1280, 720);
+const DEFAULT_IMAGE_SIZE: Vector2<usize> = Vector2::new(720, 720);
 
 mod compute;
 mod fractal_info;
 mod histogram;
-mod render;
 mod ui_state;
+mod visualization;
 
 pub fn run() -> eframe::Result {
     let native_options = eframe::NativeOptions {
         viewport: ViewportBuilder::default()
             .with_title("Fractal Flame")
-            .with_inner_size((DEFAULT_WINDOW_SIZE.0 as f32, DEFAULT_WINDOW_SIZE.1 as f32)),
+            .with_inner_size((DEFAULT_WINDOW_SIZE.x as f32, DEFAULT_WINDOW_SIZE.y as f32)),
         centered: true,
         ..Default::default()
     };
@@ -35,7 +38,7 @@ pub fn run() -> eframe::Result {
 }
 
 pub struct App {
-    render: Render,
+    visualization: Visualization,
     compute: Compute,
     main_rng: ChaCha12Rng,
     fractal_info: Arc<FractalInfo>,
@@ -50,22 +53,33 @@ impl App {
         fractal_info::init_default_fractal_info();
         let fractal_info = Arc::new(DEFAULT_FRACTAL_INFO.get().cloned().unwrap());
 
-        let render = Render::new();
+        let visualization_params = VisualizationParams {
+            image_resolution: DEFAULT_IMAGE_SIZE,
+            image_quality: 1,
+        };
 
-        let ui_state = UiState::new(creation_context);
-        let compute = Compute::new(Arc::clone(&fractal_info), &mut main_rng);
+        let compute_params = ComputeParams {
+            threads_number: std::thread::available_parallelism()
+                .expect("Failed to get available parallelism data")
+                .get(),
+            sequences_number: 1,
+            fractal_info: Arc::clone(&fractal_info),
+            histogram_resolution: visualization_params.image_resolution,
+            burn_iterations_count: 15,
+            rng_seed: main_rng.random(),
+        };
+
+        let visualization = Visualization::new(visualization_params);
+        let compute = Compute::new(compute_params, &mut main_rng);
+        let ui_state = UiState::new(creation_context, &visualization.visualization_params);
 
         Self {
-            render,
+            visualization,
             compute,
             main_rng,
             fractal_info,
             ui_state,
         }
-    }
-
-    pub fn startup(&mut self) {
-        // Set default params
     }
 }
 

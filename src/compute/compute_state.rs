@@ -20,6 +20,7 @@ pub struct ComputeState {
         mpsc::Receiver<SequenceComputeState>,
     ),
     sequences_compute_in_progress: bool,
+    has_finished_work: bool,
 }
 
 impl ComputeState {
@@ -30,8 +31,8 @@ impl ComputeState {
             .expect("Failed to build thread pool");
 
         let main_histogram = Histogram::new(
-            compute_params.histogram_width,
-            compute_params.histogram_height,
+            compute_params.histogram_resolution.x,
+            compute_params.histogram_resolution.y,
         );
 
         let mut sequences_compute_states = Vec::with_capacity(compute_params.threads_number);
@@ -41,8 +42,7 @@ impl ComputeState {
             let psi_rng = ChaCha12Rng::from_seed(local_solvers_seeds_gen.random());
             sequences_compute_states.push(SequenceComputeState::new(
                 compute_params.fractal_info.clone(),
-                compute_params.histogram_width,
-                compute_params.histogram_height,
+                compute_params.histogram_resolution,
                 compute_params.burn_iterations_count,
                 rng,
                 psi_rng,
@@ -56,17 +56,24 @@ impl ComputeState {
             sequences_compute_states,
             sequences_compute_state_channel,
             sequences_compute_in_progress: false,
+            has_finished_work: false,
         }
+    }
+
+    pub fn has_work(&self) -> bool {
+        self.sequences_compute_in_progress
     }
 
     pub fn run_iterations_in_current_sequences(&mut self, iterations_number: u64) {
         debug_assert!(!self.sequences_compute_in_progress);
         // Do iterations_number iterations in compute states using thread_pool
+        let iterations_number_per_thread =
+            iterations_number / self.sequences_compute_states.len() as u64;
         for i in 0..self.sequences_compute_states.len() {
             let mut sequence_compute_state = self.sequences_compute_states.remove(i);
             let sender = self.sequences_compute_state_channel.0.clone();
             self.thread_pool.spawn(move || {
-                sequence_compute_state.compute(iterations_number);
+                sequence_compute_state.compute(iterations_number_per_thread);
                 sender.send(sequence_compute_state).unwrap();
             });
         }
@@ -121,15 +128,14 @@ struct SequenceComputeState {
 impl SequenceComputeState {
     pub fn new(
         fractal_info: Arc<FractalInfo>,
-        histogram_width: usize,
-        histogram_height: usize,
+        histogram_resolution: Vector2<usize>,
         burn_iterations_count: u64,
         mut rng: ChaCha12Rng,
         psi_rng: ChaCha12Rng,
     ) -> Self {
         let p: Vector2<f64> =
             Vector2::new(rng.random_range(-1.0..=1.0), rng.random_range(-1.0..=1.0));
-        let histogram = Histogram::new(histogram_width, histogram_height);
+        let histogram = Histogram::new(histogram_resolution.x, histogram_resolution.y);
         let compute_area_size: Vector2<f64> =
             fractal_info.specified_image_size.cast::<f64>() / fractal_info.specified_scale;
         let compute_area: euclid::Box2D<f64, ()> = euclid::Box2D::new(

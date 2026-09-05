@@ -6,7 +6,7 @@ use rand::RngExt;
 use rand::rngs::ChaCha12Rng;
 use std::sync::Arc;
 
-mod compute_params;
+pub mod compute_params;
 mod compute_state;
 
 pub struct Compute {
@@ -15,23 +15,21 @@ pub struct Compute {
 }
 
 impl Compute {
-    pub fn new(fractal_info: Arc<FractalInfo>, main_rng: &mut ChaCha12Rng) -> Self {
-        let compute_params = ComputeParams {
-            threads_number: std::thread::available_parallelism()
-                .expect("Failed to get available parallelism data")
-                .get(),
-            sequences_number: 1,
-            fractal_info: Arc::clone(&fractal_info),
-            histogram_width: DEFAULT_IMAGE_SIZE.0,
-            histogram_height: DEFAULT_IMAGE_SIZE.1,
-            burn_iterations_count: 15,
-            rng_seed: main_rng.random(),
-        };
+    pub fn new(compute_params: ComputeParams, main_rng: &mut ChaCha12Rng) -> Self {
         let compute_state = ComputeState::new(&compute_params);
 
         Self {
             compute_params,
             compute_state,
         }
+    }
+
+    pub fn run_compute_iterations(&mut self, iterations_number: u64) {
+        self.compute_state
+            .run_iterations_in_current_sequences(iterations_number);
+        self.compute_state
+            .try_receive_sequences(&self.compute_params);
+        self.compute_state
+            .merge_local_sequences_histograms_to_main();
     }
 }
