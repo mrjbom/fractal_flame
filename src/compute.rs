@@ -27,9 +27,5 @@ impl Compute {
     pub fn run_compute_iterations(&mut self, iterations_number: u64) {
         self.compute_state
             .run_iterations_in_current_sequences(iterations_number);
-        self.compute_state
-            .try_receive_sequences(&self.compute_params);
-        self.compute_state
-            .merge_local_sequences_histograms_to_main();
     }
 }

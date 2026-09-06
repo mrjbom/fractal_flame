@@ -8,19 +8,30 @@ use rand::prelude::*;
 use rand::rngs::ChaCha12Rng;
 use rayon::prelude::*;
 use rayon::{ThreadPool, ThreadPoolBuilder};
-use std::ops::AddAssign;
-use std::sync::{Arc, mpsc};
+use std::debug_assert_matches;
+use std::sync::{Arc, Mutex, mpsc};
 
 pub struct ComputeState {
     thread_pool: ThreadPool,
-    main_histogram: Histogram,
+    main_histogram: Option<Histogram>,
     sequences_compute_states: Vec<SequenceComputeState>,
     sequences_compute_state_channel: (
         mpsc::Sender<SequenceComputeState>,
         mpsc::Receiver<SequenceComputeState>,
     ),
-    sequences_compute_in_progress: bool,
-    has_finished_work: bool,
+    active_sequences_count: usize,
+    merging_result_channel: (
+        mpsc::Sender<(Histogram, Vec<SequenceComputeState>)>,
+        mpsc::Receiver<(Histogram, Vec<SequenceComputeState>)>,
+    ),
+    state: State,
+}
+
+#[derive(Debug)]
+enum State {
+    NoWork,
+    ComputeSequences,
+    MergingHistograms,
 }
 
 impl ComputeState {
@@ -30,14 +41,14 @@ impl ComputeState {
             .build()
             .expect("Failed to build thread pool");
 
-        let main_histogram = Histogram::new(
+        let main_histogram = Some(Histogram::new(
             compute_params.histogram_resolution.x,
             compute_params.histogram_resolution.y,
-        );
+        ));
 
         let mut sequences_compute_states = Vec::with_capacity(compute_params.threads_number);
         let mut local_solvers_seeds_gen = ChaCha12Rng::seed_from_u64(compute_params.rng_seed);
-        for _ in 0..sequences_compute_states.len() {
+        for _ in 0..compute_params.threads_number {
             let rng = ChaCha12Rng::from_seed(local_solvers_seeds_gen.random());
             let psi_rng = ChaCha12Rng::from_seed(local_solvers_seeds_gen.random());
             sequences_compute_states.push(SequenceComputeState::new(
@@ -49,66 +60,99 @@ impl ComputeState {
             ));
         }
         let sequences_compute_state_channel = mpsc::channel();
+        let merging_result_channel = mpsc::channel();
 
         Self {
             thread_pool,
             main_histogram,
             sequences_compute_states,
             sequences_compute_state_channel,
-            sequences_compute_in_progress: false,
-            has_finished_work: false,
+            active_sequences_count: 0,
+            merging_result_channel,
+            state: State::NoWork,
         }
-    }
-
-    pub fn has_work(&self) -> bool {
-        self.sequences_compute_in_progress
     }
 
     pub fn run_iterations_in_current_sequences(&mut self, iterations_number: u64) {
-        debug_assert!(!self.sequences_compute_in_progress);
-        // Do iterations_number iterations in compute states using thread_pool
-        let iterations_number_per_thread =
+        debug_assert_matches!(self.state, State::NoWork);
+        debug_assert!(iterations_number > 0);
+        self.state = State::ComputeSequences;
+        let iterations_per_sequence_base =
             iterations_number / self.sequences_compute_states.len() as u64;
-        for i in 0..self.sequences_compute_states.len() {
-            let mut sequence_compute_state = self.sequences_compute_states.remove(i);
+        let iterations_per_thread_rem =
+            iterations_number % self.sequences_compute_states.len() as u64;
+
+        let sequences_compute_states = std::mem::take(&mut self.sequences_compute_states);
+        self.active_sequences_count = sequences_compute_states.len();
+        for (i, mut sequences_compute_state) in sequences_compute_states.into_iter().enumerate() {
+            let mut iterations_number = iterations_per_sequence_base;
+            if i == 0 {
+                iterations_number += iterations_per_thread_rem;
+            };
+
             let sender = self.sequences_compute_state_channel.0.clone();
             self.thread_pool.spawn(move || {
-                sequence_compute_state.compute(iterations_number_per_thread);
-                sender.send(sequence_compute_state).unwrap();
+                sequences_compute_state.compute(iterations_number);
+                sender
+                    .send(sequences_compute_state)
+                    .expect("Failed to send compute state from thread");
             });
         }
-        self.sequences_compute_in_progress = true;
     }
 
-    pub fn try_receive_sequences(&mut self, compute_params: &ComputeParams) -> bool {
-        if !self.sequences_compute_in_progress {
-            return true;
-        }
-
-        for sequence_compute_state in self.sequences_compute_state_channel.1.try_iter() {
-            self.sequences_compute_states.push(sequence_compute_state);
-        }
-
-        if self.sequences_compute_states.len() == compute_params.sequences_number {
-            self.sequences_compute_in_progress = false;
-        }
-        !self.sequences_compute_in_progress
-    }
-
-    pub fn merge_local_sequences_histograms_to_main(&mut self) {
-        debug_assert!(!self.sequences_compute_in_progress);
-        self.main_histogram.clear();
-        for y in 0..self.main_histogram.height() {
-            for x in 0..self.main_histogram.width() {
-                let main_cell = self.main_histogram.get_mut(x, y);
-                let mut color_sum = 0.0;
-                for sequence_compute_state in &self.sequences_compute_states {
-                    let sequence_compute_cell = sequence_compute_state.histogram.get(x, y);
-                    main_cell.count += sequence_compute_cell.count;
-                    color_sum += sequence_compute_cell.color;
+    /// Return true if merging occurs
+    pub fn try_poll_and_merge(&mut self) -> bool {
+        match self.state {
+            State::ComputeSequences => {
+                // Pool
+                for sequences_compute_state in self.sequences_compute_state_channel.1.try_iter() {
+                    self.sequences_compute_states.push(sequences_compute_state);
+                    self.active_sequences_count -= 1;
                 }
-                main_cell.color = color_sum / self.sequences_compute_states.len() as f64;
+
+                // Start merging
+                if self.active_sequences_count == 0 {
+                    // Sequences computed, merge
+                    self.state = State::MergingHistograms;
+                    let mut main_histogram = self.main_histogram.take().unwrap();
+                    let sequences_compute_states =
+                        std::mem::take(&mut self.sequences_compute_states);
+                    let sender = self.merging_result_channel.0.clone();
+                    self.thread_pool.spawn(move || {
+                        for y in 0..main_histogram.height() {
+                            for x in 0..main_histogram.width() {
+                                let mut counts_sum: u64 = 0;
+                                let mut colors_sum_with_count: f64 = 0.0;
+                                for sequence_compute_state in &sequences_compute_states {
+                                    let sequence_cell = sequence_compute_state.histogram.get(x, y);
+                                    counts_sum += sequence_cell.count;
+                                    colors_sum_with_count +=
+                                        sequence_cell.color * sequence_cell.count as f64;
+                                }
+                                let mut main_cell = main_histogram.get_mut(x, y);
+                                main_cell.count = counts_sum;
+                                main_cell.color = colors_sum_with_count / counts_sum as f64;
+                            }
+                        }
+
+                        sender.send((main_histogram, sequences_compute_states));
+                    });
+                }
+                false
             }
+            State::MergingHistograms => {
+                // Check merging result and return sequence compute states
+                if let Ok((main_histogram, sequences_compute_states)) =
+                    self.merging_result_channel.1.try_recv()
+                {
+                    self.state = State::NoWork;
+                    self.main_histogram = Some(main_histogram);
+                    self.sequences_compute_states = sequences_compute_states;
+                    return true;
+                }
+                false
+            }
+            State::NoWork => false,
         }
     }
 }
@@ -190,11 +234,13 @@ impl SequenceComputeState {
                 // Point not in fractal area, skip
                 // Don't put in histogram
                 self.iterations_count += 1;
+                solved_iterations_count += 1;
                 continue;
             }
             if self.iterations_count < self.burn_iterations_count {
                 // Don't put in histogram, skip
                 self.iterations_count += 1;
+                solved_iterations_count += 1;
                 continue;
             }
 
@@ -220,6 +266,9 @@ impl SequenceComputeState {
             }
             self.color = self.color * (1.0 - transform.color_speed)
                 + transform.color * transform.color_speed;
+            debug_assert!(self.color < 1.0);
+            histogram_cell.color = (histogram_cell.color + self.color) / 2.0;
+            debug_assert!(histogram_cell.color < 1.0);
 
             self.iterations_count += 1;
             solved_iterations_count += 1;
@@ -239,7 +288,7 @@ pub fn compute_coords_to_histogram_coords(
     let histogram_coord_y_f = normalized_y * (histogram_size.y as f64);
 
     let histogram_coord_x = (histogram_coord_x_f.floor() as usize).clamp(0, histogram_size.x - 1);
-    let histogram_coord_y = (histogram_coord_y_f.floor() as usize).clamp(0, histogram_size.y);
+    let histogram_coord_y = (histogram_coord_y_f.floor() as usize).clamp(0, histogram_size.y - 1);
 
     Vector2::new(histogram_coord_x, histogram_coord_y)
 }
