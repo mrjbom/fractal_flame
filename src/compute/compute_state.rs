@@ -15,16 +15,14 @@ use std::sync::{Arc, Mutex, mpsc};
 pub struct ComputeState {
     thread_pool: ThreadPool,
     main_histogram: Option<Histogram>,
+    thread_contexts: Arc<Vec<Mutex<ThreadContext>>>,
     sequences_compute_states: Vec<SequenceComputeState>,
     sequences_compute_state_channel: (
         mpsc::Sender<SequenceComputeState>,
         mpsc::Receiver<SequenceComputeState>,
     ),
     active_sequences_count: usize,
-    merging_result_channel: (
-        mpsc::Sender<(Histogram, Vec<SequenceComputeState>)>,
-        mpsc::Receiver<(Histogram, Vec<SequenceComputeState>)>,
-    ),
+    merging_result_channel: (mpsc::Sender<Histogram>, mpsc::Receiver<Histogram>),
     state: State,
 }
 
@@ -42,30 +40,64 @@ impl ComputeState {
             .build()
             .expect("Failed to build thread pool");
 
+        let fractal_info = Arc::clone(&compute_params.fractal_info);
+
         let main_histogram = Some(Histogram::new(
             compute_params.histogram_resolution.x,
             compute_params.histogram_resolution.y,
         ));
 
+        let mut master_seed_gen = ChaCha12Rng::seed_from_u64(compute_params.rng_seed);
+
+        let compute_area_size: Vector2<f64> =
+            fractal_info.specified_image_size.cast::<f64>() / fractal_info.specified_scale;
+        let compute_area: euclid::Box2D<f64, ()> = euclid::Box2D::new(
+            euclid::Point2D::new(
+                fractal_info.specified_center.x - compute_area_size.x / 2.0,
+                fractal_info.specified_center.y - compute_area_size.y / 2.0,
+            ),
+            euclid::Point2D::new(
+                fractal_info.specified_center.x + compute_area_size.x / 2.0,
+                fractal_info.specified_center.y + compute_area_size.y / 2.0,
+            ),
+        );
+
+        let thread_contexts: Vec<Mutex<ThreadContext>> = (0..compute_params.threads_number)
+            .map(|_| {
+                let rng = ChaCha12Rng::from_seed(master_seed_gen.random());
+                let psi_rng = ChaCha12Rng::from_seed(master_seed_gen.random());
+                Mutex::new(ThreadContext {
+                    histogram: Histogram::new(
+                        compute_params.histogram_resolution.x,
+                        compute_params.histogram_resolution.y,
+                    ),
+                    rng,
+                    psi_rng,
+                    psi_rng_uniform: Uniform::new_inclusive(0.0, 1.0).unwrap(),
+                    burn_iterations_count: compute_params.burn_iterations_count,
+                    fractal_info: Arc::clone(&fractal_info),
+                    compute_area,
+                })
+            })
+            .collect();
+        let thread_contexts = Arc::new(thread_contexts);
+
         let mut sequences_compute_states = Vec::with_capacity(compute_params.sequences_number);
-        let mut local_solvers_seeds_gen = ChaCha12Rng::seed_from_u64(compute_params.rng_seed);
         for _ in 0..compute_params.sequences_number {
-            let rng = ChaCha12Rng::from_seed(local_solvers_seeds_gen.random());
-            let psi_rng = ChaCha12Rng::from_seed(local_solvers_seeds_gen.random());
             sequences_compute_states.push(SequenceComputeState::new(
                 compute_params.fractal_info.clone(),
-                compute_params.histogram_resolution,
                 compute_params.burn_iterations_count,
-                rng,
-                psi_rng,
+                &mut master_seed_gen,
             ));
         }
+
         let sequences_compute_state_channel = mpsc::channel();
         let merging_result_channel = mpsc::channel();
 
         Self {
             thread_pool,
             main_histogram,
+            thread_contexts,
             sequences_compute_states,
             sequences_compute_state_channel,
             active_sequences_count: 0,
@@ -85,17 +117,25 @@ impl ComputeState {
 
         let sequences_compute_states = std::mem::take(&mut self.sequences_compute_states);
         self.active_sequences_count = sequences_compute_states.len();
-        for (i, mut sequences_compute_state) in sequences_compute_states.into_iter().enumerate() {
+        for (i, mut sequence_compute_state) in sequences_compute_states.into_iter().enumerate() {
             let mut iterations_number = iterations_per_sequence_base;
             if i == 0 {
                 iterations_number += iterations_per_thread_rem;
             };
 
             let sender = self.sequences_compute_state_channel.0.clone();
+            let thread_contexts = Arc::clone(&self.thread_contexts);
             self.thread_pool.spawn(move || {
-                sequences_compute_state.compute(iterations_number);
+                let thread_index = rayon::current_thread_index()
+                    .expect("Task must run inside the compute state's own thread pool");
+                let mut thread_context = thread_contexts[thread_index]
+                    .lock()
+                    .expect("Thread context mutex poisoned");
+
+                sequence_compute_state.compute(iterations_number, &mut thread_context);
+                drop(thread_context);
                 sender
-                    .send(sequences_compute_state)
+                    .send(sequence_compute_state)
                     .expect("Failed to send compute state from thread");
             });
         }
@@ -106,29 +146,31 @@ impl ComputeState {
         match self.state {
             State::ComputeSequences => {
                 // Pool
-                for sequences_compute_state in self.sequences_compute_state_channel.1.try_iter() {
-                    self.sequences_compute_states.push(sequences_compute_state);
+                for sequence_compute_state in self.sequences_compute_state_channel.1.try_iter() {
+                    self.sequences_compute_states.push(sequence_compute_state);
                     self.active_sequences_count -= 1;
                 }
 
                 // Start merging
                 if self.active_sequences_count == 0 {
-                    // Sequences computed, merge
                     self.state = State::MergingHistograms;
                     let mut main_histogram = self.main_histogram.take().unwrap();
-                    let sequences_compute_states =
-                        std::mem::take(&mut self.sequences_compute_states);
+                    let thread_contexts = Arc::clone(&self.thread_contexts);
                     let sender = self.merging_result_channel.0.clone();
                     self.thread_pool.spawn(move || {
+                        let locked_contexts: Vec<_> = thread_contexts
+                            .iter()
+                            .map(|ctx| ctx.lock().expect("Thread context mutex poisoned"))
+                            .collect();
+
                         for y in 0..main_histogram.height() {
                             for x in 0..main_histogram.width() {
                                 let mut counts_sum: u64 = 0;
                                 let mut colors_sum_with_count: f64 = 0.0;
-                                for sequence_compute_state in &sequences_compute_states {
-                                    let sequence_cell = sequence_compute_state.histogram.get(x, y);
-                                    counts_sum += sequence_cell.count;
-                                    colors_sum_with_count +=
-                                        sequence_cell.color * sequence_cell.count as f64;
+                                for thread_context in &locked_contexts {
+                                    let cell = thread_context.histogram.get(x, y);
+                                    counts_sum += cell.count;
+                                    colors_sum_with_count += cell.color * cell.count as f64;
                                 }
                                 let mut main_cell = main_histogram.get_mut(x, y);
                                 main_cell.count = counts_sum;
@@ -136,19 +178,18 @@ impl ComputeState {
                             }
                         }
 
-                        sender.send((main_histogram, sequences_compute_states));
+                        drop(locked_contexts);
+                        sender
+                            .send(main_histogram)
+                            .expect("Failed to send merged histogram from thread");
                     });
                 }
                 false
             }
             State::MergingHistograms => {
-                // Check merging result and return sequence compute states
-                if let Ok((main_histogram, sequences_compute_states)) =
-                    self.merging_result_channel.1.try_recv()
-                {
+                if let Ok(main_histogram) = self.merging_result_channel.1.try_recv() {
                     self.state = State::NoWork;
                     self.main_histogram = Some(main_histogram);
-                    self.sequences_compute_states = sequences_compute_states;
                     return true;
                 }
                 false
@@ -162,65 +203,48 @@ impl ComputeState {
     }
 }
 
+struct ThreadContext {
+    histogram: Histogram,
+    rng: ChaCha12Rng,
+    psi_rng: ChaCha12Rng,
+    psi_rng_uniform: Uniform<f64>,
+    burn_iterations_count: u64,
+    fractal_info: Arc<FractalInfo>,
+    compute_area: euclid::Box2D<f64, ()>,
+}
+
 struct SequenceComputeState {
     p: Vector2<f64>,
     color: f64,
     iterations_count: u64,
-    burn_iterations_count: u64,
-    histogram: Histogram,
-    fractal_info: Arc<FractalInfo>,
-    compute_area: euclid::Box2D<f64, ()>,
-    rng: ChaCha12Rng,
-    psi_rng: ChaCha12Rng,
-    psi_rng_uniform: Uniform<f64>,
 }
 
 impl SequenceComputeState {
     pub fn new(
         fractal_info: Arc<FractalInfo>,
-        histogram_resolution: Vector2<usize>,
         burn_iterations_count: u64,
-        mut rng: ChaCha12Rng,
-        psi_rng: ChaCha12Rng,
+        seed_rng: &mut ChaCha12Rng,
     ) -> Self {
-        let p: Vector2<f64> =
-            Vector2::new(rng.random_range(-1.0..=1.0), rng.random_range(-1.0..=1.0));
-        let histogram = Histogram::new(histogram_resolution.x, histogram_resolution.y);
-        let compute_area_size: Vector2<f64> =
-            fractal_info.specified_image_size.cast::<f64>() / fractal_info.specified_scale;
-        let compute_area: euclid::Box2D<f64, ()> = euclid::Box2D::new(
-            euclid::Point2D::new(
-                fractal_info.specified_center.x - compute_area_size.x / 2.0,
-                fractal_info.specified_center.y - compute_area_size.y / 2.0,
-            ),
-            euclid::Point2D::new(
-                fractal_info.specified_center.x + compute_area_size.x / 2.0,
-                fractal_info.specified_center.y + compute_area_size.y / 2.0,
-            ),
+        let p: Vector2<f64> = Vector2::new(
+            seed_rng.random_range(-1.0..=1.0),
+            seed_rng.random_range(-1.0..=1.0),
         );
 
         Self {
             p,
             color: 0.0,
             iterations_count: 0,
-            burn_iterations_count,
-            histogram,
-            fractal_info,
-            compute_area,
-            rng,
-            psi_rng,
-            psi_rng_uniform: Uniform::new_inclusive(0.0, 1.0).unwrap(),
         }
     }
 
-    pub fn compute(&mut self, iterations_number: u64) {
+    pub fn compute(&mut self, iterations_number: u64, thread_context: &mut ThreadContext) {
         let mut solved_iterations_count = 0;
         while solved_iterations_count < iterations_number {
             // Select random transform
-            let transform = &self
+            let transform = &thread_context
                 .fractal_info
                 .transforms_and_probabilities
-                .choose_weighted(&mut self.rng, |transform_and_probability| {
+                .choose_weighted(&mut thread_context.rng, |transform_and_probability| {
                     transform_and_probability.probability
                 })
                 .expect("Failed to get random transform")
@@ -234,23 +258,20 @@ impl SequenceComputeState {
                 self.p,
                 &transform.variations_and_weights,
                 &transform.affine_coefs,
-                &mut self.rng,
+                &mut thread_context.rng,
             );
 
             // Perform post transform
 
-            if !self
+            if !thread_context
                 .compute_area
                 .contains(euclid::Point2D::new(self.p.x, self.p.y))
             {
-                // Point not in fractal area, skip
-                // Don't put in histogram
                 self.iterations_count += 1;
                 solved_iterations_count += 1;
                 continue;
             }
-            if self.iterations_count < self.burn_iterations_count {
-                // Don't put in histogram, skip
+            if self.iterations_count < thread_context.burn_iterations_count {
                 self.iterations_count += 1;
                 solved_iterations_count += 1;
                 continue;
@@ -263,12 +284,14 @@ impl SequenceComputeState {
 
             let histogram_coords = compute_coords_to_histogram_coords(
                 p_final,
-                self.compute_area,
-                Vector2::new(self.histogram.width(), self.histogram.height()),
+                thread_context.compute_area,
+                Vector2::new(
+                    thread_context.histogram.width(),
+                    thread_context.histogram.height(),
+                ),
             );
 
-            // Put point in histogram
-            let histogram_cell = self
+            let histogram_cell = thread_context
                 .histogram
                 .get_mut(histogram_coords.x, histogram_coords.y);
             histogram_cell.count += 1;

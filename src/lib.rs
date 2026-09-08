@@ -62,7 +62,7 @@ impl App {
             threads_number: std::thread::available_parallelism()
                 .expect("Failed to get available parallelism data")
                 .get(),
-            sequences_number: 100,
+            sequences_number: 30000,
             fractal_info: Arc::clone(&fractal_info),
             histogram_resolution: visualization_params.image_resolution,
             burn_iterations_count: 15,
@@ -100,7 +100,6 @@ impl eframe::App for App {
             for y in 0..histogram.height() {
                 for x in 0..histogram.width() {
                     let color = histogram.get(x, y).color;
-                    // image_data.push(Color32::from_gray((color * 255.0) as u8));
                     if color > 0.0001 {
                         image_data.push(Color32::from_gray(255));
                     } else {
@@ -123,5 +122,6 @@ impl eframe::App for App {
 
     fn ui(&mut self, ui: &mut Ui, frame: &mut Frame) {
         self.ui_state.draw_ui(ui, frame);
+        ui.ctx().request_repaint();
     }
 }
