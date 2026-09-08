@@ -4,6 +4,7 @@ use crate::fractal_info::transform::affine::calculate_affine_transform;
 use crate::fractal_info::transform::variation::calculate_variations_blend;
 use crate::histogram::Histogram;
 use nalgebra::Vector2;
+use rand::distr::Uniform;
 use rand::prelude::*;
 use rand::rngs::ChaCha12Rng;
 use rayon::prelude::*;
@@ -46,9 +47,9 @@ impl ComputeState {
             compute_params.histogram_resolution.y,
         ));
 
-        let mut sequences_compute_states = Vec::with_capacity(compute_params.threads_number);
+        let mut sequences_compute_states = Vec::with_capacity(compute_params.sequences_number);
         let mut local_solvers_seeds_gen = ChaCha12Rng::seed_from_u64(compute_params.rng_seed);
-        for _ in 0..compute_params.threads_number {
+        for _ in 0..compute_params.sequences_number {
             let rng = ChaCha12Rng::from_seed(local_solvers_seeds_gen.random());
             let psi_rng = ChaCha12Rng::from_seed(local_solvers_seeds_gen.random());
             sequences_compute_states.push(SequenceComputeState::new(
@@ -155,6 +156,10 @@ impl ComputeState {
             State::NoWork => false,
         }
     }
+
+    pub fn get_histogram(&self) -> Option<&Histogram> {
+        self.main_histogram.as_ref()
+    }
 }
 
 struct SequenceComputeState {
@@ -167,6 +172,7 @@ struct SequenceComputeState {
     compute_area: euclid::Box2D<f64, ()>,
     rng: ChaCha12Rng,
     psi_rng: ChaCha12Rng,
+    psi_rng_uniform: Uniform<f64>,
 }
 
 impl SequenceComputeState {
@@ -203,6 +209,7 @@ impl SequenceComputeState {
             compute_area,
             rng,
             psi_rng,
+            psi_rng_uniform: Uniform::new_inclusive(0.0, 1.0).unwrap(),
         }
     }
 
@@ -223,7 +230,12 @@ impl SequenceComputeState {
             self.p = calculate_affine_transform(self.p, &transform.affine_coefs);
 
             // Perform variations blending
-            self.p = calculate_variations_blend(self.p, &transform.variations_and_weights);
+            self.p = calculate_variations_blend(
+                self.p,
+                &transform.variations_and_weights,
+                &transform.affine_coefs,
+                &mut self.rng,
+            );
 
             // Perform post transform
 
@@ -266,9 +278,9 @@ impl SequenceComputeState {
             }
             self.color = self.color * (1.0 - transform.color_speed)
                 + transform.color * transform.color_speed;
-            debug_assert!(self.color < 1.0);
+            debug_assert!(self.color <= 1.0);
             histogram_cell.color = (histogram_cell.color + self.color) / 2.0;
-            debug_assert!(histogram_cell.color < 1.0);
+            debug_assert!(histogram_cell.color <= 1.0);
 
             self.iterations_count += 1;
             solved_iterations_count += 1;

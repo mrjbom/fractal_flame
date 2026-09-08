@@ -7,7 +7,7 @@ use crate::ui_state::UiState;
 use crate::visualization::Visualization;
 use crate::visualization::visualization_params::VisualizationParams;
 use eframe::Frame;
-use eframe::egui::{Context, Ui, ViewportBuilder};
+use eframe::egui::{Color32, ColorImage, Context, TextureOptions, Ui, ViewportBuilder};
 use nalgebra::Vector2;
 use rand::rngs::ChaCha12Rng;
 use rand::{RngExt, SeedableRng};
@@ -62,7 +62,7 @@ impl App {
             threads_number: std::thread::available_parallelism()
                 .expect("Failed to get available parallelism data")
                 .get(),
-            sequences_number: 1,
+            sequences_number: 100,
             fractal_info: Arc::clone(&fractal_info),
             histogram_resolution: visualization_params.image_resolution,
             burn_iterations_count: 15,
@@ -70,8 +70,12 @@ impl App {
         };
 
         let visualization = Visualization::new(visualization_params);
-        let compute = Compute::new(compute_params, &mut main_rng);
+        let mut compute = Compute::new(compute_params, &mut main_rng);
         let ui_state = UiState::new(creation_context, &visualization.visualization_params);
+
+        // Startup
+        // Start default fractal calculating
+        compute.run_compute_iterations(36_000_000);
 
         Self {
             visualization,
@@ -84,7 +88,38 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn logic(&mut self, _ctx: &Context, _frame: &mut Frame) {}
+    fn logic(&mut self, _ctx: &Context, _frame: &mut Frame) {
+        if self.compute.update_histogram() {
+            // Test render
+            let histogram = self
+                .compute
+                .get_histogram()
+                .expect("Failed to get histogram");
+            let mut image_data: Vec<Color32> =
+                Vec::with_capacity(histogram.width() * histogram.height());
+            for y in 0..histogram.height() {
+                for x in 0..histogram.width() {
+                    let color = histogram.get(x, y).color;
+                    // image_data.push(Color32::from_gray((color * 255.0) as u8));
+                    if color > 0.0001 {
+                        image_data.push(Color32::from_gray(255));
+                    } else {
+                        image_data.push(Color32::from_gray(0));
+                    }
+                }
+            }
+            let color_image = ColorImage::new(
+                [
+                    self.visualization.visualization_params.image_resolution.x,
+                    self.visualization.visualization_params.image_resolution.y,
+                ],
+                image_data,
+            );
+            self.ui_state
+                .image_texture_handle
+                .set(color_image, TextureOptions::NEAREST);
+        }
+    }
 
     fn ui(&mut self, ui: &mut Ui, frame: &mut Frame) {
         self.ui_state.draw_ui(ui, frame);

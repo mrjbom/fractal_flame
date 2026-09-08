@@ -1,5 +1,6 @@
 use crate::fractal_info::transform::affine::AffineCoefs;
 use crate::fractal_info::transform::variation::Variation;
+use crate::fractal_info::transform::variation::variations::PDJParams;
 use nalgebra::Vector2;
 use std::sync::OnceLock;
 use transform::Transform;
@@ -25,6 +26,30 @@ pub struct FractalInfo {
 }
 
 pub fn init_default_fractal_info() {
+    DEFAULT_FRACTAL_INFO
+        .set(FractalInfo {
+            specified_image_size: Vector2::new(600, 600),
+            specified_scale: 192.0,
+            specified_center: Vector2::zeros(),
+            transforms_and_probabilities: vec![TransformAndProbability {
+                transform: Transform {
+                    affine_coefs: AffineCoefs {
+                        a: 0.965926,
+                        b: -0.258819,
+                        c: 0.0,
+                        d: 0.258819,
+                        e: 0.965926,
+                        f: 0.0,
+                    },
+                    variations_and_weights: vec![(Variation::Linear, 1.0).into()],
+                    color: 1.0,
+                    color_speed: 0.5,
+                },
+                probability: 1.0,
+            }],
+        })
+        .expect("Failed to init default fractal info once lock");
+    /*
     DEFAULT_FRACTAL_INFO
         .set(FractalInfo {
             specified_image_size: Vector2::new(600, 600),
@@ -78,12 +103,14 @@ pub fn init_default_fractal_info() {
                         },
                         variations_and_weights: vec![
                             (
-                                Variation::Pdj {
-                                    a: 1.09358,
-                                    b: 2.13048,
-                                    c: 2.54127,
-                                    d: 2.37267,
-                                },
+                                Variation::Pdj(
+                                    PDJParams {
+                                        a: 1.09358,
+                                        b: 2.13048,
+                                        c: 2.54127,
+                                        d: 2.37267,
+                                    },
+                                ),
                                 1.0,
                             )
                                 .into(),
@@ -96,4 +123,5 @@ pub fn init_default_fractal_info() {
             ],
         })
         .expect("Failed to init default fractal info once lock");
+     */
 }

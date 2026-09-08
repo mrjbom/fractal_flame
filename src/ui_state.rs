@@ -4,7 +4,7 @@ use eframe::egui::{Color32, ColorImage, Image, TextureHandle, TextureOptions, Ui
 use eframe::{Frame, egui};
 
 pub struct UiState {
-    image_texture_handle: TextureHandle,
+    pub image_texture_handle: TextureHandle,
 }
 
 impl UiState {
