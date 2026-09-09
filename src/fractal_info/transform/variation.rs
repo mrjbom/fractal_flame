@@ -1,7 +1,9 @@
 pub mod variations;
 
 use crate::fractal_info::transform::affine::AffineCoefs;
-use crate::fractal_info::transform::variation::variations::{PDJParams, julia, pdj, popcorn};
+use crate::fractal_info::transform::variation::variations::{
+    PDJParams, bent, handkerchief, julia, pdj, popcorn,
+};
 use nalgebra as na;
 use nalgebra::Vector2;
 use rand::rngs::ChaCha12Rng;
@@ -30,7 +32,9 @@ impl From<(Variation, f64)> for VariationAndWeight {
 #[derive(Copy, Clone, Debug)]
 pub enum Variation {
     Linear,         // 0
+    Handkerchief,   // 6
     Julia,          // 13
+    Bent,           // 14
     Popcorn,        // 17
     Pdj(PDJParams), // 24
 }
@@ -43,7 +47,9 @@ pub fn calculate_variation_transform(
 ) -> Vector2<f64> {
     match variation {
         Variation::Linear => p,
+        Variation::Handkerchief => handkerchief(p),
         Variation::Julia => julia(p, rng),
+        Variation::Bent => bent(p),
         Variation::Popcorn => popcorn(p, affine_coefs),
         Variation::Pdj(pdj_params) => pdj(p, pdj_params),
         _ => unimplemented!("Unknown variation"),

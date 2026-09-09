@@ -14,8 +14,8 @@ impl HistogramCell {
 
 #[derive(Clone)]
 pub struct Histogram {
-    // Use get and get_mut, or [(y, x)]
-    pub cells: Array2<HistogramCell>,
+    // Use get and get_mut
+    cells: Array2<HistogramCell>,
 }
 
 impl Histogram {

@@ -1,7 +1,7 @@
 use crate::fractal_info::transform::affine::AffineCoefs;
 use euclid::Trig;
 use nalgebra as na;
-use nalgebra::{ComplexField, Vector2};
+use nalgebra::{ComplexField, RealField, Vector2};
 use rand::RngExt;
 use rand::distr::Distribution;
 use rand::distr::Uniform;
@@ -14,12 +14,12 @@ pub fn r(p: Vector2<f64>) -> f64 {
 
 /// θ(theta) = arctan(x / y)
 pub fn theta(p: Vector2<f64>) -> f64 {
-    (p.x / p.y).atan()
+    p.x.atan2(p.y)
 }
 
 /// φ(phi) = arctan(y / x)
 pub fn phi(p: Vector2<f64>) -> f64 {
-    (p.y / p.x).atan()
+    p.y.atan2(p.x)
 }
 
 /// Ω(omega) = 0 or π
@@ -48,6 +48,18 @@ pub fn linear(p: Vector2<f64>) -> Vector2<f64> {
     p
 }
 
+// Handkerchief (6)
+// r · (sin(θ + r), cos(θ − r))
+pub fn handkerchief(p: Vector2<f64>) -> Vector2<f64> {
+    let theta = theta(p);
+    let r = r(p);
+    // sin(θ + r)
+    let sin = (theta + r).sin();
+    // cos(θ − r)
+    let cos = (theta - r).cos();
+    Vector2::new(r * sin, r * cos)
+}
+
 // Julia (13)
 // √r · (cos(θ / 2 + Ω), sin(θ / 2 + Ω))
 pub fn julia(p: Vector2<f64>, rng: &mut ChaCha12Rng) -> Vector2<f64> {
@@ -61,6 +73,28 @@ pub fn julia(p: Vector2<f64>, rng: &mut ChaCha12Rng) -> Vector2<f64> {
 
     Vector2::new(sqrt_r * x, sqrt_r * y)
 }
+
+// Bent (14)
+// (x, y)    x >= 0, y >= 0
+// (2x, y)   x < 0, y >= 0
+// (x, y/2)  x >= 0, y < 0
+// (2x, y/2) x < 0, y < 0
+pub fn bent(p: Vector2<f64>) -> Vector2<f64> {
+    let x = p.x;
+    let y = p.y;
+    if x >= 0.0 && y >= 0.0 {
+        Vector2::new(x, y)
+    } else if x < 0.0 && y >= 0.0 {
+        Vector2::new(x * 2.0, y)
+    } else if x >= 0.0 && y < 0.0 {
+        Vector2::new(x, y / 2.0)
+    } else if x < 0.0 && y < 0.0 {
+        Vector2::new(x * 2.0, y / 2.0)
+    } else {
+        unreachable!()
+    }
+}
+
 // Popcorn (17)
 // (x + c * sin(tan(3 * y)), y + f * sin(tan(3 * x)))
 pub fn popcorn(p: Vector2<f64>, affine_coefs: &AffineCoefs) -> Vector2<f64> {

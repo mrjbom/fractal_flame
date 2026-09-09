@@ -100,7 +100,8 @@ impl eframe::App for App {
             for y in 0..histogram.height() {
                 for x in 0..histogram.width() {
                     let color = histogram.get(x, y).color;
-                    if color > 0.0001 {
+                    let count = histogram.get(x, y).count;
+                    if color > 0.0001 && count > 5 {
                         image_data.push(Color32::from_gray(255));
                     } else {
                         image_data.push(Color32::from_gray(0));

@@ -26,6 +26,8 @@ pub struct FractalInfo {
 }
 
 pub fn init_default_fractal_info() {
+    /*
+    // Affine only test
     DEFAULT_FRACTAL_INFO
         .set(FractalInfo {
             specified_image_size: Vector2::new(600, 600),
@@ -34,12 +36,12 @@ pub fn init_default_fractal_info() {
             transforms_and_probabilities: vec![TransformAndProbability {
                 transform: Transform {
                     affine_coefs: AffineCoefs {
-                        a: 0.965926,
-                        b: -0.258819,
-                        c: 0.0,
-                        d: 0.258819,
-                        e: 0.965926,
-                        f: 0.0,
+                        a: 1.0,
+                        b: 0.0,
+                        c: 0.01,
+                        d: 0.0,
+                        e: 1.0,
+                        f: -0.02,
                     },
                     variations_and_weights: vec![(Variation::Linear, 1.0).into()],
                     color: 1.0,
@@ -49,7 +51,66 @@ pub fn init_default_fractal_info() {
             }],
         })
         .expect("Failed to init default fractal info once lock");
+     */
     /*
+    // Julia test
+    DEFAULT_FRACTAL_INFO
+        .set(FractalInfo {
+            specified_image_size: Vector2::new(600, 600),
+            specified_scale: 192.0,
+            specified_center: Vector2::zeros(),
+            transforms_and_probabilities: vec![TransformAndProbability {
+                transform: Transform {
+                    affine_coefs: AffineCoefs {
+                        a: 1.0,
+                        b: 0.0,
+                        c: 0.0,
+                        d: 0.0,
+                        e: 1.0,
+                        f: 0.0,
+                    },
+                    variations_and_weights: vec![(Variation::Linear, 1.0).into(), (Variation::Julia, 1.0).into()],
+                    color: 1.0,
+                    color_speed: 0.5,
+                },
+                probability: 1.0,
+            }],
+        })
+        .expect("Failed to init default fractal info once lock");
+     */
+    /*
+    // PDJ test
+    DEFAULT_FRACTAL_INFO
+        .set(FractalInfo {
+            specified_image_size: Vector2::new(600, 600),
+            specified_scale: 54.0,
+            specified_center: Vector2::zeros(),
+            transforms_and_probabilities: vec![TransformAndProbability {
+                transform: Transform {
+                    affine_coefs: AffineCoefs {
+                        a: 1.0,
+                        b: 0.0,
+                        c: 0.0,
+                        d: 0.0,
+                        e: 1.0,
+                        f: 0.0,
+                    },
+                    variations_and_weights: vec![(Variation::Pdj(PDJParams {
+                        a: 1.0,
+                        b: 2.0,
+                        c: 2.0,
+                        d: 1.0,
+                    }), 1.0).into()],
+                    color: 1.0,
+                    color_speed: 0.5,
+                },
+                probability: 1.0,
+            }],
+        })
+        .expect("Failed to init default fractal info once lock");
+
+     */
+    // Sphere, not working
     DEFAULT_FRACTAL_INFO
         .set(FractalInfo {
             specified_image_size: Vector2::new(600, 600),
@@ -67,10 +128,10 @@ pub fn init_default_fractal_info() {
                             f: 0.0,
                         },
                         variations_and_weights: vec![(Variation::Julia, 1.0).into()],
-                        color: 0.13,
+                        color: 1.0,
                         color_speed: 0.5,
                     },
-                    probability: 0.56453495,
+                    probability: 0.564534951145298,
                 },
                 TransformAndProbability {
                     transform: Transform {
@@ -86,10 +147,10 @@ pub fn init_default_fractal_info() {
                             (Variation::Linear, 1.0).into(),
                             (Variation::Popcorn, 1.0).into(),
                         ],
-                        color: 0.844,
+                        color: 1.0,
                         color_speed: 0.5,
                     },
-                    probability: 0.013135,
+                    probability: 0.0131350067581356,
                 },
                 TransformAndProbability {
                     transform: Transform {
@@ -103,25 +164,22 @@ pub fn init_default_fractal_info() {
                         },
                         variations_and_weights: vec![
                             (
-                                Variation::Pdj(
-                                    PDJParams {
-                                        a: 1.09358,
-                                        b: 2.13048,
-                                        c: 2.54127,
-                                        d: 2.37267,
-                                    },
-                                ),
+                                Variation::Pdj(PDJParams {
+                                    a: 1.09358,
+                                    b: 2.13048,
+                                    c: 2.54127,
+                                    d: 2.37267,
+                                }),
                                 1.0,
                             )
                                 .into(),
                         ],
-                        color: 0.0,
+                        color: 1.0,
                         color_speed: 0.5,
                     },
-                    probability: 0.42233,
+                    probability: 0.422330042096567,
                 },
             ],
         })
         .expect("Failed to init default fractal info once lock");
-     */
 }

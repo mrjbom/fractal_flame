@@ -317,7 +317,7 @@ pub fn compute_coords_to_histogram_coords(
     histogram_size: Vector2<usize>,
 ) -> Vector2<usize> {
     let normalized_x = (p.x - compute_area.center().x) / compute_area.width() + 0.5;
-    let normalized_y = (compute_area.center().y - p.y) / compute_area.height() + 0.5;
+    let normalized_y = (p.y - compute_area.center().y) / compute_area.height() + 0.5;
 
     let histogram_coord_x_f = normalized_x * (histogram_size.x as f64);
     let histogram_coord_y_f = normalized_y * (histogram_size.y as f64);
