@@ -16,13 +16,17 @@ impl HistogramCell {
 pub struct Histogram {
     // Use get and get_mut
     cells: Array2<HistogramCell>,
+    count_max: u64,
 }
 
 impl Histogram {
     pub fn new(width: usize, height: usize) -> Self {
         // MxN, M rows, N columns
         let cells = Array2::from_shape_fn((height, width), |(_i, _j)| HistogramCell::new(0.0));
-        Self { cells }
+        Self {
+            cells,
+            count_max: 0,
+        }
     }
 
     pub fn width(&self) -> usize {
@@ -31,6 +35,14 @@ impl Histogram {
 
     pub fn height(&self) -> usize {
         self.cells.nrows()
+    }
+
+    pub fn count_max(&self) -> u64 {
+        self.count_max
+    }
+
+    pub fn count_max_mut(&mut self) -> &mut u64 {
+        &mut self.count_max
     }
 
     #[inline(always)]
@@ -45,5 +57,6 @@ impl Histogram {
 
     pub fn clear(&mut self) {
         self.cells.fill(HistogramCell::new(0.0));
+        self.count_max = 0;
     }
 }

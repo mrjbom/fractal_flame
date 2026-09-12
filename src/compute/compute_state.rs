@@ -175,6 +175,8 @@ impl ComputeState {
                                 let mut main_cell = main_histogram.get_mut(x, y);
                                 main_cell.count = counts_sum;
                                 main_cell.color = colors_sum_with_count / counts_sum as f64;
+                                *main_histogram.count_max_mut() =
+                                    main_histogram.count_max().max(counts_sum);
                             }
                         }
 
