@@ -166,15 +166,15 @@ impl ComputeState {
                         for y in 0..main_histogram.height() {
                             for x in 0..main_histogram.width() {
                                 let mut counts_sum: u64 = 0;
-                                let mut colors_sum_with_count: f64 = 0.0;
+                                let mut color_sum_total: f64 = 0.0;
                                 for thread_context in &locked_contexts {
                                     let cell = thread_context.histogram.get(x, y);
                                     counts_sum += cell.count;
-                                    colors_sum_with_count += cell.color * cell.count as f64;
+                                    color_sum_total += cell.color_sum;
                                 }
-                                let mut main_cell = main_histogram.get_mut(x, y);
+                                let main_cell = main_histogram.get_mut(x, y);
                                 main_cell.count = counts_sum;
-                                main_cell.color = colors_sum_with_count / counts_sum as f64;
+                                main_cell.color_sum = color_sum_total;
                                 *main_histogram.count_max_mut() =
                                     main_histogram.count_max().max(counts_sum);
                             }
@@ -304,8 +304,7 @@ impl SequenceComputeState {
             self.color = self.color * (1.0 - transform.color_speed)
                 + transform.color * transform.color_speed;
             debug_assert!(self.color <= 1.0);
-            histogram_cell.color = (histogram_cell.color + self.color) / 2.0;
-            debug_assert!(histogram_cell.color <= 1.0);
+            histogram_cell.color_sum += self.color;
 
             self.iterations_count += 1;
             solved_iterations_count += 1;

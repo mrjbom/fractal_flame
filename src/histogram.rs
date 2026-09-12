@@ -3,12 +3,24 @@ use ndarray::Array2;
 #[derive(Clone)]
 pub struct HistogramCell {
     pub count: u64,
-    pub color: f64,
+    pub color_sum: f64,
 }
 
 impl HistogramCell {
-    pub fn new(color: f64) -> Self {
-        Self { count: 0, color }
+    pub fn new() -> Self {
+        Self {
+            count: 0,
+            color_sum: 0.0,
+        }
+    }
+
+    #[inline(always)]
+    pub fn color_avg(&self) -> f64 {
+        if self.count > 0 {
+            self.color_sum / self.count as f64
+        } else {
+            0.0
+        }
     }
 }
 
@@ -22,7 +34,7 @@ pub struct Histogram {
 impl Histogram {
     pub fn new(width: usize, height: usize) -> Self {
         // MxN, M rows, N columns
-        let cells = Array2::from_shape_fn((height, width), |(_i, _j)| HistogramCell::new(0.0));
+        let cells = Array2::from_shape_fn((height, width), |(_i, _j)| HistogramCell::new());
         Self {
             cells,
             count_max: 0,
@@ -56,7 +68,7 @@ impl Histogram {
     }
 
     pub fn clear(&mut self) {
-        self.cells.fill(HistogramCell::new(0.0));
+        self.cells.fill(HistogramCell::new());
         self.count_max = 0;
     }
 }
