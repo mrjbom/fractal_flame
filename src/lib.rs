@@ -3,9 +3,9 @@
 use crate::compute::Compute;
 use crate::compute::compute_params::ComputeParams;
 use crate::fractal_info::{DEFAULT_FRACTAL_INFO, FractalInfo};
+use crate::render::Render;
+use crate::render::render_params::RenderParams;
 use crate::ui_state::UiState;
-use crate::visualization::Visualization;
-use crate::visualization::visualization_params::VisualizationParams;
 use eframe::Frame;
 use eframe::egui::{Color32, ColorImage, Context, TextureOptions, Ui, ViewportBuilder};
 use nalgebra::Vector2;
@@ -19,8 +19,8 @@ const DEFAULT_IMAGE_SIZE: Vector2<usize> = Vector2::new(720, 720);
 mod compute;
 mod fractal_info;
 mod histogram;
+mod render;
 mod ui_state;
-mod visualization;
 
 pub fn run() -> eframe::Result {
     let native_options = eframe::NativeOptions {
@@ -38,7 +38,7 @@ pub fn run() -> eframe::Result {
 }
 
 pub struct App {
-    visualization: Visualization,
+    visualization: Render,
     compute: Compute,
     main_rng: ChaCha12Rng,
     fractal_info: Arc<FractalInfo>,
@@ -53,7 +53,7 @@ impl App {
         fractal_info::init_default_fractal_info();
         let fractal_info = Arc::new(DEFAULT_FRACTAL_INFO.get().cloned().unwrap());
 
-        let visualization_params = VisualizationParams {
+        let visualization_params = RenderParams {
             image_resolution: DEFAULT_IMAGE_SIZE,
             image_quality: 1,
         };
@@ -69,9 +69,9 @@ impl App {
             rng_seed: main_rng.random(),
         };
 
-        let visualization = Visualization::new(visualization_params);
+        let visualization = Render::new(visualization_params);
         let mut compute = Compute::new(compute_params, &mut main_rng);
-        let ui_state = UiState::new(creation_context, &visualization.visualization_params);
+        let ui_state = UiState::new(creation_context, &visualization.render_params);
 
         // Startup
         // Start default fractal calculating
@@ -110,8 +110,8 @@ impl eframe::App for App {
             }
             let color_image = ColorImage::new(
                 [
-                    self.visualization.visualization_params.image_resolution.x,
-                    self.visualization.visualization_params.image_resolution.y,
+                    self.visualization.render_params.image_resolution.x,
+                    self.visualization.render_params.image_resolution.y,
                 ],
                 image_data,
             );

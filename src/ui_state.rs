@@ -1,5 +1,5 @@
 use crate::DEFAULT_IMAGE_SIZE;
-use crate::visualization::visualization_params::VisualizationParams;
+use crate::render::render_params::RenderParams;
 use eframe::egui::{Color32, ColorImage, Image, TextureHandle, TextureOptions, Ui};
 use eframe::{Frame, egui};
 
@@ -10,7 +10,7 @@ pub struct UiState {
 impl UiState {
     pub fn new(
         creation_context: &eframe::CreationContext,
-        visualization_params: &VisualizationParams,
+        visualization_params: &RenderParams,
     ) -> Self {
         let image_data: Vec<Color32> = vec![
             Color32::BLACK;
